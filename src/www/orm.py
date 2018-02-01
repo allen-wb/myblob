@@ -17,9 +17,9 @@ def create_pool(loop, **kw):
     __pool = yield from aiomysql.create_pool(
         host=kw.get('host', 'dfsiqi.51vip.biz'),
         port=kw.get('port', 14972),
-        user=kw['root'],
-        password=kw['admin'],
-        db=kw['wb_test'],
+        user=kw['user'],
+        password=kw['password'],
+        db=kw['db'],
         charset=kw.get('charset', 'utf8'),
         autocommit=kw.get('autocommit', True),
         maxsize=kw.get('maxsize', 10),
@@ -55,7 +55,8 @@ def execute(sql, args):
     with (yield from __pool) as conn:
         try:
             cur = yield from conn.cursor()
-            yield from cur.execute(sql.relapce('?', '%s'), args)
+            s = sql.replace('?', '%s')
+            yield from cur.execute(s, args)
             affected = cur.rowcount
             yield from cur.close()
         except BaseException as e:
@@ -176,7 +177,30 @@ class Model(dict, metaclass=ModelMetaclass):
         rs = yield from select('%s where %s = ?' % (cls.__select__, cls.__primary_key__), [pk], 1)
         if len(rs) == 0:
             return None
-        return cls(**rs[0]) 
+        return cls(**rs[0])
+
+    @asyncio.coroutine
+    def save(self):
+        args = list(map(self.get_value_or_default, self.__fields__))
+        args.append(self.get_value_or_default(self.__primary_key__))
+        rows = yield from execute(self.__insert__, args)
+        if rows != 1:
+            logging.info('failed to insert record: affected rows: %s' % rows)
+
+    @asyncio.coroutine
+    def delete(self):
+        args = [self.get_value(self.__primary_key__)]
+        rows = yield from execute(self.__delete__, args)
+        if rows != 1:
+            logging.info('failed to delete record: affected rows: %s' % rows)
+
+    @asyncio.coroutine
+    def update(self):
+        args = list(map(self.get_value, self.__fields__))
+        args.append(self.get_value(self.__primary_key__))
+        rows = yield from execute(self.__update__, args)
+        if rows != 1:
+            logging.info('failed to update by primary key: affected rows: %s' % rows)
 
     @classmethod
     @asyncio.coroutine

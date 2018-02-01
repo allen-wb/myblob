@@ -17,9 +17,9 @@ def create_pool(loop, **kw):
     __pool = yield from aiomysql.create_pool(
         host=kw.get('host', 'dfsiqi.51vip.biz'),
         port=kw.get('port', 14972),
-        user=kw['user'],
-        password=kw['password'],
-        db=kw['db'],
+        user=kw.get('user', 'root'),
+        password=kw.get('password', 'admin'),
+        db=kw.get('db', 'wb_test'),
         charset=kw.get('charset', 'utf8'),
         autocommit=kw.get('autocommit', True),
         maxsize=kw.get('maxsize', 10),
@@ -38,7 +38,7 @@ def select(sql, args, size=None):
         cur = yield from conn.cursor(aiomysql.DictCursor)
         # SQL语句的占位符是?，而MySQL的占位符是%s，select()函数在内部自动替换。
         # 注意要始终坚持使用带参数的SQL，而不是自己拼接SQL字符串，这样可以防止SQL注入攻击
-        yield from cur.execute(sql.relapce('?', '%s'), args or ())
+        yield from cur.execute(sql.replace('?', '%s'), args or ())
         if size:
             rs = yield from cur.fetchmany(size)
         else:
@@ -55,8 +55,7 @@ def execute(sql, args):
     with (yield from __pool) as conn:
         try:
             cur = yield from conn.cursor()
-            s = sql.replace('?', '%s')
-            yield from cur.execute(s, args)
+            yield from cur.execute(sql.replace('?', '%s'), args)
             affected = cur.rowcount
             yield from cur.close()
         except BaseException as e:
@@ -186,21 +185,6 @@ class Model(dict, metaclass=ModelMetaclass):
         rows = yield from execute(self.__insert__, args)
         if rows != 1:
             logging.info('failed to insert record: affected rows: %s' % rows)
-
-    @asyncio.coroutine
-    def delete(self):
-        args = [self.get_value(self.__primary_key__)]
-        rows = yield from execute(self.__delete__, args)
-        if rows != 1:
-            logging.info('failed to delete record: affected rows: %s' % rows)
-
-    @asyncio.coroutine
-    def update(self):
-        args = list(map(self.get_value, self.__fields__))
-        args.append(self.get_value(self.__primary_key__))
-        rows = yield from execute(self.__update__, args)
-        if rows != 1:
-            logging.info('failed to update by primary key: affected rows: %s' % rows)
 
     @classmethod
     @asyncio.coroutine
